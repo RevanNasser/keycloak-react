@@ -99,7 +99,7 @@ export const initKeycloak = (): Keycloak => {
     console.log('Auth success callback');
     if (keycloakInstance?.token) {
       import('./httpClient').then(({ httpClient }) => {
-        httpClient.defaults.headers.common['Authorization'] = `Bearer ${keycloakInstance.token}`;
+        httpClient.defaults.headers.common['Authorization'] = `Bearer ${keycloakInstance?.token}`;
       });
     }
     if (onAuthUpdate) {
@@ -166,7 +166,7 @@ export const initKeycloak = (): Keycloak => {
         if (refreshed && keycloakInstance?.token) {
           console.log('Token refreshed');
           import('./httpClient').then(({ httpClient }) => {
-            httpClient.defaults.headers.common['Authorization'] = `Bearer ${keycloakInstance.token}`;
+            httpClient.defaults.headers.common['Authorization'] = `Bearer ${keycloakInstance?.token}`;
           });
         }
         if (onAuthUpdate) {
