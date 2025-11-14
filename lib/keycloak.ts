@@ -69,7 +69,8 @@ export const initKeycloak = (): Keycloak => {
         // Update HTTP client header if available
         if (typeof window !== 'undefined' && keycloakInstance?.token) {
           import('./httpClient').then(({ httpClient }) => {
-            httpClient.defaults.headers.common['Authorization'] = `Bearer ${keycloakInstance.token}`;
+            httpClient.defaults.headers.common['Authorization'] =
+              `Bearer ${keycloakInstance?.token}`;
           });
         }
       } else {
