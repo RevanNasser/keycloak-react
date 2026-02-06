@@ -3,10 +3,9 @@
 import { useState, useEffect } from 'react';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
-import { Panel } from 'primereact/panel';
-import { Divider } from 'primereact/divider';
 import { getKeycloak, setAuthUpdateCallback, getTokenInfo, getKeycloakConfigForDisplay, type TokenInfo } from '@/lib/keycloak';
 import { httpClient } from '@/lib/httpClient';
+import AIChatbot from '@/components/AIChatbot';
 
 interface DocumentationPageProps {
   onLogout: () => void;
@@ -18,6 +17,8 @@ export default function DocumentationPage({ onLogout }: DocumentationPageProps) 
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [keycloakReady, setKeycloakReady] = useState(false);
   const [kc, setKc] = useState<ReturnType<typeof getKeycloak> | null>(null);
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('tokens');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -82,48 +83,6 @@ export default function DocumentationPage({ onLogout }: DocumentationPageProps) 
     }
   }, [isAuthenticated, keycloakReady, kc]);
 
-  const callBackend = async () => {
-    if (!kc?.token) {
-      setInfoMessage('❌ No access token available. Please login first.');
-      return;
-    }
-
-    setInfoMessage('⏳ Sending API request with your access token...\n\nThis demonstrates how your Keycloak token is automatically included in API requests.');
-
-    try {
-      // Show what we're sending
-      const tokenPreview = kc.token.substring(0, 50) + '...';
-      const requestInfo = `📤 Request Details:\n\nURL: https://mockbin.com/request\nMethod: GET\n\n🔑 Authorization Header:\nBearer ${tokenPreview}\n\n⏳ Sending request...`;
-
-      setInfoMessage(requestInfo);
-
-      const response = await httpClient.get('https://mockbin.com/request');
-      
-      // Extract request info from response (mockbin returns the request it received)
-      const requestReceived = response.data;
-      const authHeader = requestReceived?.headers?.['authorization'] || requestReceived?.headers?.['Authorization'] || 'Not found';
-      
-      const successMessage = `✅ API Request Successful!\n\n📊 Response Status: ${response.status} ${response.statusText}\n\n🔑 Token Sent in Request:\nThe Authorization header was automatically included:\n\n${authHeader.substring(0, 80)}...\n\n📋 What This Demonstrates:\n• Your Keycloak access token was sent in the HTTP Authorization header\n• The backend API received your token (see above)\n• In a real application, the server would:\n  - Validate the token with Keycloak\n  - Verify your identity\n  - Check your permissions\n  - Return data specific to you\n\n🌐 Real-World Use Cases:\n• Fetching your user profile: GET /api/users/me\n• Loading your orders: GET /api/orders\n• Creating posts: POST /api/posts\n• Updating settings: PUT /api/settings\n\n💡 This is how your frontend communicates with backend APIs securely!\n\n📝 Check browser console (F12) for full request/response details.`;
-
-      setInfoMessage(successMessage);
-      console.log('=== API Request with Token ===');
-      console.log('Request URL:', 'https://mockbin.com/request');
-      console.log('Authorization Header:', `Bearer ${kc.token.substring(0, 50)}...`);
-      console.log('Full Response:', response);
-      console.log('Request Headers Sent:', response.config?.headers);
-    } catch (error: any) {
-      const errorMessage = `❌ API Request Failed\n\nError: ${error.message}\n\nStatus: ${error.response?.status || 'N/A'}\n\nThis could mean:\n• Network connectivity issue\n• The API endpoint is unavailable\n• CORS restrictions\n\n💡 Check browser console (F12) for detailed error information.`;
-      setInfoMessage(errorMessage);
-      console.error('API Request Error:', error);
-      console.error('Error Details:', {
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data
-      });
-    }
-  };
-
   const handleLogout = () => {
     if (kc) {
       kc.logout({ redirectUri: window.location.origin + '/' });
@@ -133,744 +92,781 @@ export default function DocumentationPage({ onLogout }: DocumentationPageProps) 
 
   const config = getKeycloakConfigForDisplay();
 
+  const tools = [
+    { 
+      id: 'status', 
+      label: 'Check Status', 
+      icon: '✓',
+      action: () => setInfoMessage(`✅ Authentication Status: ${kc?.authenticated ? 'TRUE' : 'FALSE'}\n\nYou are currently authenticated and your session is active.`),
+      desc: 'Verify your login status'
+    },
+    { 
+      id: 'token', 
+      label: 'View Token', 
+      icon: '🎫',
+      action: () => {
+        if (!kc?.token) return;
+        const token = kc.token;
+        setInfoMessage(`🎫 Access Token (first 100 characters):\n\n${token.substring(0, 100)}...\n\n📋 Full token has been logged to browser console`);
+        console.log('Full Access Token:', token);
+      },
+      desc: 'See your JWT token'
+    },
+    { 
+      id: 'parsed', 
+      label: 'Parsed Token', 
+      icon: '📋',
+      action: () => {
+        if (!kc?.tokenParsed) return;
+        const parsed = kc.tokenParsed;
+        setInfoMessage(`📋 Parsed Token:\n\n${JSON.stringify(parsed, null, 2)}\n\n📝 Full details logged to console.`);
+        console.log('Parsed Token:', parsed);
+      },
+      desc: 'Decode token contents'
+    },
+    { 
+      id: 'expiry', 
+      label: 'Check Expiry', 
+      icon: '⏰',
+      action: () => {
+        if (!kc) return;
+        const expired = kc.isTokenExpired(5);
+        setInfoMessage(`⏰ Token Expiration Check:\n\nExpires in 5 seconds: ${expired ? 'YES ⚠️' : 'NO ✅'}\n\nToken expires at: ${tokenInfo?.expiresAt}\n\nYour token is ${expired ? 'about to expire' : 'still valid'}.`);
+      },
+      desc: 'Check token validity'
+    },
+    { 
+      id: 'refresh', 
+      label: 'Refresh Token', 
+      icon: '🔄',
+      action: () => {
+        if (!kc) return;
+        kc.updateToken(10)
+          .then((refreshed) => {
+            setInfoMessage(`🔄 Token Refresh:\n\nToken refreshed: ${refreshed ? 'YES ✅' : 'NO (still valid)'}\n\nNew token has been logged to console.\n\nYour session has been extended.`);
+            const info = getTokenInfo(kc);
+            setTokenInfo(info);
+            console.log('New token:', kc.token);
+          })
+          .catch((e: any) => {
+            setInfoMessage(`❌ Refresh Error:\n\n${e.message}\n\nPlease try logging in again.`);
+          });
+      },
+      desc: 'Get fresh token'
+    },
+    { 
+      id: 'admin', 
+      label: 'Check Admin Role', 
+      icon: '👤',
+      action: () => {
+        if (!kc) return;
+        const hasAdmin = kc.hasRealmRole('admin');
+        setInfoMessage(`👤 Realm Role Check:\n\nHas realm role "admin": ${hasAdmin ? 'YES ✅' : 'NO ❌'}\n\n💡 To assign this role:\n1. Go to Keycloak Admin Console\n2. Navigate to Users → Your User → Role Mappings\n3. Assign the "admin" realm role`);
+      },
+      desc: 'Verify admin access'
+    },
+  ];
+
   if (!isAuthenticated || !kc) {
     return null;
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f5f7fa' }}>
-      {/* Modern Header */}
-      <div style={{
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        color: 'white',
-        padding: '24px 0',
-        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 100
-      }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="docs-page">
+      {/* Animated Background */}
+      <div className="bg-orb orb-1"></div>
+      <div className="bg-orb orb-2"></div>
+      <div className="bg-orb orb-3"></div>
+
+      {/* Header */}
+      <header className="docs-header">
+        <div className="header-content">
+          <div className="header-left">
+            <div className="logo">🔐</div>
             <div>
-              <h1 style={{ 
-                margin: 0, 
-                fontSize: '32px', 
-                fontWeight: '700',
-                letterSpacing: '-0.5px'
-              }}>
-                🔐 Keycloak Documentation
-              </h1>
-              <p style={{ 
-                margin: '8px 0 0 0', 
-                fontSize: '15px', 
-                color: 'rgba(255,255,255,0.9)',
-                fontWeight: '300'
-              }}>
-                Interactive guide to Keycloak authentication
-              </p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <div style={{ 
-                textAlign: 'right',
-                paddingRight: '20px',
-                borderRight: '1px solid rgba(255,255,255,0.2)'
-              }}>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', marginBottom: '4px' }}>
-                  Logged in as
-                </div>
-                <div style={{ fontSize: '16px', fontWeight: '600' }}>
-                  {tokenInfo?.username || tokenInfo?.email || 'User'}
-                </div>
-              </div>
-              <Button
-                label="Logout"
-                severity="danger"
-                onClick={handleLogout}
-                size="small"
-                style={{
-                  fontWeight: '600',
-                  borderRadius: '8px'
-                }}
-              />
+              <h1>Keycloak Interactive</h1>
+              <p>Explore authentication in real-time</p>
             </div>
           </div>
+          <div className="header-right">
+            <div className="user-info">
+              <div className="user-avatar">
+                {tokenInfo?.username?.charAt(0).toUpperCase() || 'U'}
+              </div>
+              <div className="user-details">
+                <span className="username">{tokenInfo?.username || 'User'}</span>
+                <span className="user-email">{tokenInfo?.email || 'No email'}</span>
+              </div>
+            </div>
+            <button onClick={handleLogout} className="logout-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              Logout
+            </button>
+          </div>
         </div>
-      </div>
+      </header>
 
-      {/* Main Content Container */}
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '32px 24px' }}>
+      {/* Main Content */}
+      <main className="docs-main">
         {/* Success Banner */}
-        <Card style={{
-          background: 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)',
-          border: '2px solid #667eea',
-          padding: '24px',
-          marginBottom: '32px',
-          borderRadius: '12px',
-          boxShadow: '0 2px 8px rgba(102, 126, 234, 0.1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ 
-              fontSize: '32px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              width: '56px',
-              height: '56px',
-              borderRadius: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
-            }}>
-              ✅
-            </div>
-            <div style={{ flex: 1 }}>
-              <h3 style={{ 
-                margin: '0 0 6px 0', 
-                color: '#2c3e50',
-                fontSize: '20px',
-                fontWeight: '600'
-              }}>
-                Authentication Successful
-              </h3>
-              <p style={{ 
-                margin: 0, 
-                color: '#5a6c7d',
-                fontSize: '14px',
-                lineHeight: '1.5'
-              }}>
-                You are authenticated with Keycloak. Your access token is automatically included in all API requests. Explore the documentation and interactive tools below.
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        {/* Three Column Layout */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' }}>
-          {/* Left Column - Documentation */}
-          <div>
-            <Card style={{
-              marginBottom: '24px',
-              borderRadius: '12px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-              border: '1px solid #e1e8ed'
-            }}>
-              <div style={{ padding: '24px' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '12px',
-                  marginBottom: '20px'
-                }}>
-                  <div style={{
-                    fontSize: '24px',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    📚
-                  </div>
-                  <h2 style={{
-                    margin: 0,
-                    fontSize: '22px',
-                    fontWeight: '600',
-                    color: '#2c3e50'
-                  }}>
-                    How Keycloak Works
-                  </h2>
-                </div>
-
-                <div style={{ textAlign: 'left', lineHeight: '1.8', color: '#5a6c7d' }}>
-                  <div style={{ marginBottom: '24px' }}>
-                    <h3 style={{ 
-                      fontSize: '16px', 
-                      fontWeight: '600',
-                      color: '#2c3e50',
-                      marginBottom: '12px'
-                    }}>
-                      What is Keycloak?
-                    </h3>
-                    <p style={{ marginBottom: '12px', fontSize: '14px' }}>
-                      Keycloak is an open-source identity and access management solution. It handles:
-                    </p>
-                    <ul style={{ 
-                      margin: 0, 
-                      paddingLeft: '20px',
-                      fontSize: '14px'
-                    }}>
-                      <li style={{ marginBottom: '8px' }}>
-                        <strong style={{ color: '#2c3e50' }}>Authentication:</strong> Verifying who you are
-                      </li>
-                      <li style={{ marginBottom: '8px' }}>
-                        <strong style={{ color: '#2c3e50' }}>Authorization:</strong> What you can access
-                      </li>
-                      <li style={{ marginBottom: '8px' }}>
-                        <strong style={{ color: '#2c3e50' }}>Single Sign-On (SSO):</strong> Login once, access multiple apps
-                      </li>
-                    </ul>
-                  </div>
-
-                  <Divider />
-
-                  <div style={{ marginTop: '24px', marginBottom: '24px' }}>
-                    <h3 style={{ 
-                      fontSize: '16px', 
-                      fontWeight: '600',
-                      color: '#2c3e50',
-                      marginBottom: '12px'
-                    }}>
-                      🔄 Authentication Flow
-                    </h3>
-                    <ol style={{ 
-                      margin: 0, 
-                      paddingLeft: '20px',
-                      fontSize: '14px'
-                    }}>
-                      <li style={{ marginBottom: '8px' }}>User clicks "Login" → Redirected to Keycloak</li>
-                      <li style={{ marginBottom: '8px' }}>User enters credentials on Keycloak</li>
-                      <li style={{ marginBottom: '8px' }}>Keycloak validates and issues tokens</li>
-                      <li style={{ marginBottom: '8px' }}>User redirected back to app with tokens</li>
-                      <li style={{ marginBottom: '8px' }}>App uses tokens for API requests</li>
-                    </ol>
-                  </div>
-
-                  <Divider />
-
-                  <div style={{ marginTop: '24px', marginBottom: '24px' }}>
-                    <h3 style={{ 
-                      fontSize: '16px', 
-                      fontWeight: '600',
-                      color: '#2c3e50',
-                      marginBottom: '12px'
-                    }}>
-                      🎫 About Tokens
-                    </h3>
-                    <div style={{ fontSize: '14px' }}>
-                      <p style={{ marginBottom: '10px' }}>
-                        <strong style={{ color: '#2c3e50' }}>Access Token:</strong> Short-lived token (usually 5-15 min) used to access APIs
-                      </p>
-                      <p style={{ marginBottom: '10px' }}>
-                        <strong style={{ color: '#2c3e50' }}>Refresh Token:</strong> Used to get new access tokens without re-login
-                      </p>
-                      <p style={{ marginBottom: '10px' }}>
-                        <strong style={{ color: '#2c3e50' }}>ID Token:</strong> Contains user identity information
-                      </p>
-                    </div>
-                  </div>
-
-                  <Divider />
-
-                  {/* API Requests with Tokens documentation - commented out, can be uncommented later if needed
-                  <div style={{ marginTop: '24px', marginBottom: '24px' }}>
-                    <h3 style={{ 
-                      fontSize: '16px', 
-                      fontWeight: '600',
-                      color: '#2c3e50',
-                      marginBottom: '12px'
-                    }}>
-                      🌐 API Requests with Tokens
-                    </h3>
-                    <div style={{ fontSize: '14px' }}>
-                      <p style={{ marginBottom: '12px' }}>
-                        <strong style={{ color: '#2c3e50' }}>What are API requests?</strong> API requests are calls to <strong>backend servers</strong> (not other pages/screens). They're used to:
-                      </p>
-                      <ul style={{ 
-                        margin: '0 0 12px 0', 
-                        paddingLeft: '20px',
-                        fontSize: '13px'
-                      }}>
-                        <li style={{ marginBottom: '6px' }}>Fetch data from a server (user profile, orders, products)</li>
-                        <li style={{ marginBottom: '6px' }}>Create/update/delete resources (save data, update settings)</li>
-                        <li style={{ marginBottom: '6px' }}>Access protected endpoints that require authentication</li>
-                        <li style={{ marginBottom: '6px' }}>Perform actions on behalf of the logged-in user</li>
-                      </ul>
-
-                      <div style={{
-                        backgroundColor: '#fff3cd',
-                        border: '1px solid #ffc107',
-                        borderRadius: '8px',
-                        padding: '12px',
-                        marginBottom: '12px'
-                      }}>
-                        <p style={{ margin: 0, fontSize: '13px', color: '#856404' }}>
-                          <strong>⚠️ Important:</strong> This is <strong>NOT</strong> for:
-                        </p>
-                        <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', fontSize: '12px', color: '#856404' }}>
-                          <li>Navigating to another page/screen</li>
-                          <li>Passing data between React components</li>
-                          <li>Sending tokens as URL parameters</li>
-                        </ul>
-                        <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#856404' }}>
-                          API requests are for <strong>calling backend services</strong> (like REST APIs, GraphQL, etc.)
-                        </p>
-                      </div>
-
-                      <p style={{ marginBottom: '10px' }}>
-                        <strong style={{ color: '#2c3e50' }}>How tokens are sent:</strong>
-                      </p>
-                      <p style={{ marginBottom: '10px', fontSize: '13px' }}>
-                        The token is sent in the <strong>HTTP header</strong> (not URL parameters):
-                      </p>
-                      <div style={{
-                        backgroundColor: '#f8f9fa',
-                        padding: '12px',
-                        borderRadius: '6px',
-                        border: '1px solid #e1e8ed',
-                        marginBottom: '12px',
-                        fontSize: '12px',
-                        fontFamily: 'monospace'
-                      }}>
-                        <div style={{ color: '#667eea', marginBottom: '4px' }}>GET /api/user/profile</div>
-                        <div style={{ color: '#95a5a6' }}>Headers:</div>
-                        <div style={{ marginLeft: '12px' }}>
-                          Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI...
-                        </div>
-                      </div>
-
-                      <p style={{ marginBottom: '10px' }}>
-                        <strong style={{ color: '#2c3e50' }}>Real-world examples:</strong>
-                      </p>
-                      <div style={{
-                        backgroundColor: '#f8f9fa',
-                        padding: '12px',
-                        borderRadius: '6px',
-                        border: '1px solid #e1e8ed',
-                        fontSize: '12px'
-                      }}>
-                        <div style={{ marginBottom: '8px' }}>
-                          <strong style={{ color: '#667eea' }}>1. Get User Profile:</strong>
-                          <div style={{ marginLeft: '12px', color: '#5a6c7d', fontFamily: 'monospace' }}>
-                            GET /api/users/me
-                          </div>
-                        </div>
-                        <div style={{ marginBottom: '8px' }}>
-                          <strong style={{ color: '#667eea' }}>2. Fetch Orders:</strong>
-                          <div style={{ marginLeft: '12px', color: '#5a6c7d', fontFamily: 'monospace' }}>
-                            GET /api/orders
-                          </div>
-                        </div>
-                        <div style={{ marginBottom: '8px' }}>
-                          <strong style={{ color: '#667eea' }}>3. Create Post:</strong>
-                          <div style={{ marginLeft: '12px', color: '#5a6c7d', fontFamily: 'monospace' }}>
-                            POST /api/posts
-                          </div>
-                        </div>
-                        <div>
-                          <strong style={{ color: '#667eea' }}>4. Update Settings:</strong>
-                          <div style={{ marginLeft: '12px', color: '#5a6c7d', fontFamily: 'monospace' }}>
-                            PUT /api/settings
-                          </div>
-                        </div>
-                      </div>
-
-                      <p style={{ marginTop: '12px', marginBottom: 0, fontSize: '13px', fontStyle: 'italic', color: '#667eea' }}>
-                        💡 Try the "Send API Request" button to see how your token is sent to a backend API!
-                      </p>
-                    </div>
-                  </div>
-
-                  <Divider />
-                  */}
-
-                  <div style={{ marginTop: '24px' }}>
-                    <h3 style={{ 
-                      fontSize: '16px', 
-                      fontWeight: '600',
-                      color: '#2c3e50',
-                      marginBottom: '12px'
-                    }}>
-                      ⚙️ Configuration
-                    </h3>
-                    <div style={{
-                      backgroundColor: '#f8f9fa',
-                      padding: '16px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontFamily: 'monospace',
-                      border: '1px solid #e1e8ed'
-                    }}>
-                      <div style={{ marginBottom: '8px' }}>
-                        <strong style={{ color: '#667eea' }}>URL:</strong> {config.url}
-                      </div>
-                      <div style={{ marginBottom: '8px' }}>
-                        <strong style={{ color: '#667eea' }}>Realm:</strong> {config.realm}
-                      </div>
-                      <div>
-                        <strong style={{ color: '#667eea' }}>Client ID:</strong> {config.clientId}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {/* Token Information Panel */}
-            {tokenInfo && (
-              <Card style={{
-                borderRadius: '12px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                border: '1px solid #e1e8ed'
-              }}>
-                <div style={{ padding: '24px' }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '12px',
-                    marginBottom: '20px'
-                  }}>
-                    <div style={{
-                      fontSize: '24px',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      🎫
-                    </div>
-                    <h2 style={{
-                      margin: 0,
-                      fontSize: '22px',
-                      fontWeight: '600',
-                      color: '#2c3e50'
-                    }}>
-                      Token Information
-                    </h2>
-                  </div>
-
-                  <div style={{ 
-                    textAlign: 'left', 
-                    fontSize: '14px',
-                    color: '#5a6c7d'
-                  }}>
-                    <div style={{
-                      backgroundColor: '#f8f9fa',
-                      padding: '16px',
-                      borderRadius: '8px',
-                      marginBottom: '16px',
-                      border: '1px solid #e1e8ed'
-                    }}>
-                      <div style={{ marginBottom: '12px' }}>
-                        <strong style={{ color: '#2c3e50', display: 'block', marginBottom: '4px' }}>User ID</strong>
-                        <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{tokenInfo.subject}</span>
-                      </div>
-                      <div style={{ marginBottom: '12px' }}>
-                        <strong style={{ color: '#2c3e50', display: 'block', marginBottom: '4px' }}>Username</strong>
-                        <span>{tokenInfo.username || 'N/A'}</span>
-                      </div>
-                      <div style={{ marginBottom: '12px' }}>
-                        <strong style={{ color: '#2c3e50', display: 'block', marginBottom: '4px' }}>Email</strong>
-                        <span>{tokenInfo.email || 'N/A'}</span>
-                      </div>
-                      <div style={{ marginBottom: '12px' }}>
-                        <strong style={{ color: '#2c3e50', display: 'block', marginBottom: '4px' }}>Realm</strong>
-                        <span>{tokenInfo.realm}</span>
-                      </div>
-                      <div style={{ marginBottom: '12px' }}>
-                        <strong style={{ color: '#2c3e50', display: 'block', marginBottom: '4px' }}>Issued At</strong>
-                        <span>{tokenInfo.issuedAt}</span>
-                      </div>
-                      <div>
-                        <strong style={{ color: '#2c3e50', display: 'block', marginBottom: '4px' }}>Expires At</strong>
-                        <span>{tokenInfo.expiresAt}</span>
-                      </div>
-                    </div>
-                    {tokenInfo.roles.length > 0 && (
-                      <div>
-                        <strong style={{ color: '#2c3e50', display: 'block', marginBottom: '8px' }}>Realm Roles</strong>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                          {tokenInfo.roles.map((role, idx) => (
-                            <span
-                              key={idx}
-                              style={{
-                                backgroundColor: '#667eea',
-                                color: 'white',
-                                padding: '4px 12px',
-                                borderRadius: '16px',
-                                fontSize: '12px',
-                                fontWeight: '500'
-                              }}
-                            >
-                              {role}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            )}
-          </div>
-
-          {/* Middle Column - Interactive Tools */}
-          <div>
-            <Card style={{
-              borderRadius: '12px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-              border: '1px solid #e1e8ed',
-              marginBottom: '24px'
-            }}>
-              <div style={{ padding: '24px' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '12px',
-                  marginBottom: '20px'
-                }}>
-                  <div style={{
-                    fontSize: '24px',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    🎮
-                  </div>
-                  <h2 style={{
-                    margin: 0,
-                    fontSize: '22px',
-                    fontWeight: '600',
-                    color: '#2c3e50'
-                  }}>
-                    Interactive Tools
-                  </h2>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <Button
-                    onClick={() => setInfoMessage(`✅ Authentication Status: ${kc?.authenticated ? 'TRUE' : 'FALSE'}\n\nYou are currently authenticated and your session is active.`)}
-                    label="✓ Check Authentication Status"
-                    severity="info"
-                    style={{ 
-                      width: '100%', 
-                      height: '48px',
-                      borderRadius: '8px',
-                      fontWeight: '500'
-                    }}
-                  />
-
-                  <Button
-                    onClick={() => {
-                      if (!kc?.token) return;
-                      const token = kc.token;
-                      setInfoMessage(
-                        `🎫 Access Token (first 100 characters):\n\n${token.substring(0, 100)}...\n\n📋 Full token has been logged to browser console`
-                      );
-                      console.log('Full Access Token:', token);
-                    }}
-                    label="🎫 View Access Token"
-                    severity="info"
-                    style={{ 
-                      width: '100%', 
-                      height: '48px',
-                      borderRadius: '8px',
-                      fontWeight: '500'
-                    }}
-                  />
-
-                  <Button
-                    onClick={() => {
-                      if (!kc?.tokenParsed) return;
-                      const parsed = kc.tokenParsed;
-                      setInfoMessage(`📋 Parsed Token:\n\n${JSON.stringify(parsed, null, 2)}\n\n📝 Full details logged to console.`);
-                      console.log('Parsed Token:', parsed);
-                    }}
-                    label="📋 View Parsed Token"
-                    severity="warning"
-                    style={{ 
-                      width: '100%', 
-                      height: '48px',
-                      borderRadius: '8px',
-                      fontWeight: '500'
-                    }}
-                  />
-
-                  <Button
-                    onClick={() => {
-                      if (!kc) return;
-                      const expired = kc.isTokenExpired(5);
-                      setInfoMessage(
-                        `⏰ Token Expiration Check:\n\nExpires in 5 seconds: ${expired ? 'YES ⚠️' : 'NO ✅'}\n\nToken expires at: ${tokenInfo?.expiresAt}\n\nYour token is ${expired ? 'about to expire' : 'still valid'}.`
-                      );
-                    }}
-                    label="⏰ Check Token Expiration"
-                    severity="info"
-                    style={{ 
-                      width: '100%', 
-                      height: '48px',
-                      borderRadius: '8px',
-                      fontWeight: '500'
-                    }}
-                  />
-
-                  <Button
-                    onClick={() => {
-                      if (!kc) return;
-                      kc.updateToken(10)
-                        .then((refreshed) => {
-                          setInfoMessage(
-                            `🔄 Token Refresh:\n\nToken refreshed: ${refreshed ? 'YES ✅' : 'NO (still valid)'}\n\nNew token has been logged to console.\n\nYour session has been extended.`
-                          );
-                          const info = getTokenInfo(kc);
-                          setTokenInfo(info);
-                          console.log('New token:', kc.token);
-                        })
-                        .catch((e: any) => {
-                          setInfoMessage(`❌ Refresh Error:\n\n${e.message}\n\nPlease try logging in again.`);
-                        });
-                    }}
-                    label="🔄 Refresh Token"
-                    severity="secondary"
-                    style={{ 
-                      width: '100%', 
-                      height: '48px',
-                      borderRadius: '8px',
-                      fontWeight: '500'
-                    }}
-                  />
-
-                  {/* Send API Request button - commented out, can be uncommented later if needed
-                  <Button
-                    onClick={callBackend}
-                    label="🌐 Send API Request (with token)"
-                    severity="success"
-                    style={{ 
-                      width: '100%', 
-                      height: '48px',
-                      borderRadius: '8px',
-                      fontWeight: '500'
-                    }}
-                    title="Demonstrates how your Keycloak token is automatically included in API requests via the Authorization header"
-                  />
-                  */}
-
-                  <Button
-                    onClick={() => {
-                      if (!kc) return;
-                      const hasAdmin = kc.hasRealmRole('admin');
-                      setInfoMessage(
-                        `👤 Realm Role Check:\n\nHas realm role "admin": ${hasAdmin ? 'YES ✅' : 'NO ❌'}\n\n💡 To assign this role:\n1. Go to Keycloak Admin Console\n2. Navigate to Users → Your User → Role Mappings\n3. Assign the "admin" realm role`
-                      );
-                    }}
-                    label="👤 Check Realm Role (admin)"
-                    severity="info"
-                    style={{ 
-                      width: '100%', 
-                      height: '48px',
-                      borderRadius: '8px',
-                      fontWeight: '500'
-                    }}
-                  />
-
-                  <Button
-                    onClick={() => {
-                      if (!kc) return;
-                      const hasTest = kc.hasResourceRole('test', 'react-client');
-                      setInfoMessage(
-                        `🔐 Client Role Check:\n\nHas client role "test": ${hasTest ? 'YES ✅' : 'NO ❌'}\n\n💡 To assign this role:\n1. Go to Keycloak Admin Console\n2. Navigate to Clients → react-client → Roles\n3. Create "test" role if needed\n4. Assign to your user`
-                      );
-                    }}
-                    label="🔐 Check Client Role (test)"
-                    severity="info"
-                    style={{ 
-                      width: '100%', 
-                      height: '48px',
-                      borderRadius: '8px',
-                      fontWeight: '500'
-                    }}
-                  />
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Right Column - Results Panel */}
-          <div>
-            <Card style={{
-              borderRadius: '12px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-              border: '1px solid #e1e8ed',
-              height: '100%'
-            }}>
-              <div style={{ padding: '24px' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '12px',
-                  marginBottom: '20px'
-                }}>
-                  <div style={{
-                    fontSize: '24px',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    📊
-                  </div>
-                  <h2 style={{
-                    margin: 0,
-                    fontSize: '22px',
-                    fontWeight: '600',
-                    color: '#2c3e50'
-                  }}>
-                    Results & Information
-                  </h2>
-                </div>
-
-                <div
-                  style={{
-                    backgroundColor: '#f8f9fa',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    minHeight: '400px',
-                    border: '1px solid #e1e8ed'
-                  }}
-                >
-                  <div
-                    style={{
-                      wordBreak: 'break-all',
-                      whiteSpace: 'pre-wrap',
-                      textAlign: 'left',
-                      fontFamily: 'monospace',
-                      fontSize: '13px',
-                      color: '#2c3e50',
-                      lineHeight: '1.6'
-                    }}
-                  >
-                    {infoMessage || (
-                      <div style={{ 
-                        color: '#95a5a6', 
-                        fontStyle: 'italic',
-                        textAlign: 'center',
-                        paddingTop: '40px'
-                      }}>
-                        <div style={{ fontSize: '48px', marginBottom: '16px' }}>👆</div>
-                        <p style={{ fontSize: '16px', marginBottom: '8px' }}>
-                          Click any button to see results here
-                        </p>
-                        <p style={{ fontSize: '14px', marginTop: '24px' }}>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Card>
+        <div className="success-banner">
+          <div className="success-icon">🎉</div>
+          <div className="success-content">
+            <h3>Welcome back, {tokenInfo?.username || 'User'}!</h3>
+            <p>You are successfully authenticated. Explore the tools below to learn about your tokens and session.</p>
           </div>
         </div>
-      </div>
+
+        {/* Two Column Layout */}
+        <div className="docs-grid">
+          {/* Left Column - Tools */}
+          <div className="tools-section">
+            <h2 className="section-title">
+              <span className="title-icon">🛠️</span>
+              Interactive Tools
+            </h2>
+            <div className="tools-grid">
+              {tools.map((tool) => (
+                <button
+                  key={tool.id}
+                  onClick={tool.action}
+                  className="tool-card"
+                >
+                  <div className="tool-icon">{tool.icon}</div>
+                  <h4>{tool.label}</h4>
+                  <p>{tool.desc}</p>
+                  <div className="tool-glow"></div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Right Column - Token Info & Output */}
+          <div className="info-section">
+            {/* Token Info Card */}
+            {tokenInfo && (
+              <div className="token-card">
+                <h3 className="card-title">
+                  <span>🎫</span>
+                  Your Token Info
+                </h3>
+                <div className="token-details">
+                  <div className="detail-row">
+                    <span className="detail-label">User ID</span>
+                    <span className="detail-value mono">{tokenInfo.subject}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Username</span>
+                    <span className="detail-value">{tokenInfo.username || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Email</span>
+                    <span className="detail-value">{tokenInfo.email || 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Realm</span>
+                    <span className="detail-value">{tokenInfo.realm}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Expires</span>
+                    <span className="detail-value">{tokenInfo.expiresAt}</span>
+                  </div>
+                  {tokenInfo.roles.length > 0 && (
+                    <div className="detail-row roles">
+                      <span className="detail-label">Roles</span>
+                      <div className="roles-list">
+                        {tokenInfo.roles.map((role, idx) => (
+                          <span key={idx} className="role-badge">{role}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Output Panel */}
+            <div className="output-panel">
+              <h3 className="card-title">
+                <span>📊</span>
+                Output Console
+              </h3>
+              <div className="output-content">
+                {infoMessage ? (
+                  <pre className="output-text">{infoMessage}</pre>
+                ) : (
+                  <div className="empty-state">
+                    <div className="empty-icon">👆</div>
+                    <p>Click a tool above to see results here</p>
+                    <span className="empty-hint">Explore your authentication data</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Config Card */}
+            <div className="config-card">
+              <h3 className="card-title">
+                <span>⚙️</span>
+                Configuration
+              </h3>
+              <div className="config-details">
+                <div className="config-item">
+                  <span className="config-label">URL</span>
+                  <code className="config-value">{config.url}</code>
+                </div>
+                <div className="config-item">
+                  <span className="config-label">Realm</span>
+                  <code className="config-value">{config.realm}</code>
+                </div>
+                <div className="config-item">
+                  <span className="config-label">Client ID</span>
+                  <code className="config-value">{config.clientId}</code>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* AI Chatbot */}
+      <AIChatbot isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
+
+      {/* Floating AI Button */}
+      <button
+        onClick={() => setIsAIChatOpen(!isAIChatOpen)}
+        className="floating-ai-btn"
+      >
+        <div className="btn-ripple"></div>
+        <span className="btn-icon">{isAIChatOpen ? '✕' : '🤖'}</span>
+        {!isAIChatOpen && <span className="btn-text">Ask AI</span>}
+      </button>
+
+      <style jsx>{`
+        .docs-page {
+          min-height: 100vh;
+          background: linear-gradient(135deg, #0a0a0a 0%, #0f172a 50%, #1e3a8a 100%);
+          position: relative;
+          overflow-x: hidden;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        /* Background Orbs */
+        .bg-orb {
+          position: fixed;
+          border-radius: 50%;
+          filter: blur(80px);
+          opacity: 0.3;
+          animation: float 20s ease-in-out infinite;
+          pointer-events: none;
+        }
+
+        .orb-1 {
+          width: 500px;
+          height: 500px;
+          background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+          top: -100px;
+          right: -100px;
+          animation-delay: 0s;
+        }
+
+        .orb-2 {
+          width: 400px;
+          height: 400px;
+          background: radial-gradient(circle, #1d4ed8 0%, transparent 70%);
+          bottom: -100px;
+          left: -100px;
+          animation-delay: -7s;
+        }
+
+        .orb-3 {
+          width: 300px;
+          height: 300px;
+          background: radial-gradient(circle, #60a5fa 0%, transparent 70%);
+          top: 50%;
+          left: 50%;
+          animation-delay: -14s;
+        }
+
+        @keyframes float {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(30px, -30px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
+        }
+
+        /* Header */
+        .docs-header {
+          background: rgba(15, 23, 42, 0.8);
+          backdrop-filter: blur(20px);
+          border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+          padding: 16px 40px;
+          position: sticky;
+          top: 0;
+          z-index: 100;
+        }
+
+        .header-content {
+          max-width: 1400px;
+          margin: 0 auto;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .header-left {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .logo {
+          width: 48px;
+          height: 48px;
+          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+          box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        .header-left h1 {
+          color: white;
+          font-size: 20px;
+          font-weight: 700;
+          margin: 0;
+        }
+
+        .header-left p {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 13px;
+          margin: 2px 0 0 0;
+        }
+
+        .header-right {
+          display: flex;
+          align-items: center;
+          gap: 20px;
+        }
+
+        .user-info {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .user-avatar {
+          width: 40px;
+          height: 40px;
+          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: 700;
+          font-size: 16px;
+        }
+
+        .user-details {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .username {
+          color: white;
+          font-weight: 600;
+          font-size: 14px;
+        }
+
+        .user-email {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 12px;
+        }
+
+        .logout-btn {
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          color: #ef4444;
+          padding: 10px 20px;
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.2s;
+        }
+
+        .logout-btn:hover {
+          background: rgba(239, 68, 68, 0.2);
+          transform: translateY(-2px);
+        }
+
+        /* Main Content */
+        .docs-main {
+          max-width: 1400px;
+          margin: 0 auto;
+          padding: 40px;
+        }
+
+        /* Success Banner */
+        .success-banner {
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%);
+          border: 1px solid rgba(59, 130, 246, 0.3);
+          border-radius: 16px;
+          padding: 24px 32px;
+          display: flex;
+          align-items: center;
+          gap: 20px;
+          margin-bottom: 40px;
+          backdrop-filter: blur(10px);
+        }
+
+        .success-icon {
+          font-size: 40px;
+          animation: bounce 1s ease infinite;
+        }
+
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+
+        .success-content h3 {
+          color: white;
+          font-size: 20px;
+          font-weight: 700;
+          margin: 0 0 6px 0;
+        }
+
+        .success-content p {
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 14px;
+          margin: 0;
+        }
+
+        /* Grid Layout */
+        .docs-grid {
+          display: grid;
+          grid-template-columns: 1fr 1.2fr;
+          gap: 40px;
+        }
+
+        /* Section Title */
+        .section-title {
+          color: white;
+          font-size: 24px;
+          font-weight: 700;
+          margin-bottom: 24px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .title-icon {
+          font-size: 28px;
+        }
+
+        /* Tools Grid */
+        .tools-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+
+        .tool-card {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 16px;
+          padding: 24px;
+          text-align: left;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .tool-card:hover {
+          transform: translateY(-4px);
+          border-color: rgba(59, 130, 246, 0.5);
+          box-shadow: 0 10px 40px rgba(59, 130, 246, 0.2);
+        }
+
+        .tool-icon {
+          font-size: 32px;
+          margin-bottom: 12px;
+        }
+
+        .tool-card h4 {
+          color: white;
+          font-size: 16px;
+          font-weight: 600;
+          margin: 0 0 6px 0;
+        }
+
+        .tool-card p {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 13px;
+          margin: 0;
+        }
+
+        .tool-glow {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 100px;
+          height: 100px;
+          background: #3b82f6;
+          border-radius: 50%;
+          filter: blur(40px);
+          opacity: 0;
+          transition: opacity 0.3s;
+          pointer-events: none;
+        }
+
+        .tool-card:hover .tool-glow {
+          opacity: 0.3;
+        }
+
+        /* Info Section */
+        .info-section {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        /* Cards */
+        .token-card,
+        .output-panel,
+        .config-card {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 16px;
+          overflow: hidden;
+        }
+
+        .card-title {
+          background: rgba(0, 0, 0, 0.2);
+          padding: 16px 24px;
+          margin: 0;
+          color: white;
+          font-size: 16px;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Token Details */
+        .token-details {
+          padding: 20px 24px;
+        }
+
+        .detail-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .detail-row:last-child {
+          border-bottom: none;
+        }
+
+        .detail-row.roles {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 12px;
+        }
+
+        .detail-label {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 13px;
+        }
+
+        .detail-value {
+          color: white;
+          font-size: 14px;
+          font-weight: 500;
+        }
+
+        .detail-value.mono {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 12px;
+          color: #60a5fa;
+        }
+
+        .roles-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .role-badge {
+          background: rgba(59, 130, 246, 0.2);
+          border: 1px solid rgba(59, 130, 246, 0.3);
+          color: #60a5fa;
+          padding: 4px 12px;
+          border-radius: 20px;
+          font-size: 12px;
+          font-weight: 500;
+        }
+
+        /* Output Panel */
+        .output-content {
+          padding: 20px 24px;
+          min-height: 200px;
+          max-height: 300px;
+          overflow-y: auto;
+        }
+
+        .output-text {
+          color: #e2e8f0;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 13px;
+          line-height: 1.7;
+          margin: 0;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 200px;
+          text-align: center;
+        }
+
+        .empty-icon {
+          font-size: 48px;
+          margin-bottom: 16px;
+          opacity: 0.5;
+        }
+
+        .empty-state p {
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 16px;
+          margin: 0 0 8px 0;
+        }
+
+        .empty-hint {
+          color: rgba(255, 255, 255, 0.4);
+          font-size: 13px;
+        }
+
+        /* Config Card */
+        .config-details {
+          padding: 20px 24px;
+        }
+
+        .config-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .config-item:last-child {
+          border-bottom: none;
+        }
+
+        .config-label {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 13px;
+        }
+
+        .config-value {
+          background: rgba(59, 130, 246, 0.1);
+          color: #60a5fa;
+          padding: 4px 12px;
+          border-radius: 6px;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 12px;
+        }
+
+        /* Floating AI Button */
+        .floating-ai-btn {
+          position: fixed;
+          bottom: 30px;
+          right: 30px;
+          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+          border: none;
+          color: white;
+          padding: 16px 24px;
+          border-radius: 50px;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4);
+          z-index: 1000;
+          transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+          overflow: hidden;
+        }
+
+        .floating-ai-btn:hover {
+          transform: scale(1.05) translateY(-3px);
+          box-shadow: 0 15px 40px rgba(59, 130, 246, 0.5);
+        }
+
+        .btn-ripple {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 0;
+          height: 0;
+          background: rgba(255, 255, 255, 0.3);
+          border-radius: 50%;
+          transform: translate(-50%, -50%);
+          animation: ripple 2s ease-out infinite;
+        }
+
+        @keyframes ripple {
+          0% { width: 0; height: 0; opacity: 1; }
+          100% { width: 200px; height: 200px; opacity: 0; }
+        }
+
+        .btn-icon {
+          font-size: 20px;
+          position: relative;
+          z-index: 1;
+        }
+
+        .btn-text {
+          position: relative;
+          z-index: 1;
+        }
+
+        @media (max-width: 900px) {
+          .docs-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .tools-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .header-content {
+            flex-direction: column;
+            gap: 20px;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -62,7 +62,21 @@ The app uses environment variables for configuration (with defaults):
 - `NEXT_PUBLIC_KEYCLOAK_REALM` - Realm name (default: `master`)
 - `NEXT_PUBLIC_KEYCLOAK_CLIENT_ID` - Client ID (default: `react-client`)
 
+## 🤖 AI Assistant
+
+This project includes an AI-powered assistant to help you with Keycloak setup and troubleshooting. Click the 🤖 button in the bottom right corner to chat with the AI assistant.
+
+**The AI can help you with:**
+- Setting up Keycloak server with Docker
+- Creating and configuring clients
+- Troubleshooting 401 errors and CORS issues
+- Understanding tokens and authentication flow
+- Setting up realms, users, and roles
+- Environment variables and configuration
+
+## 📚 Additional Documentation
+
 For more detailed troubleshooting, see:
-- [ENV_VARIABLES.md](./ENV_VARIABLES.md) - Environment variables reference
+- [KEYCLOAK_SETUP.md](./KEYCLOAK_SETUP.md) - Complete Keycloak setup guide
 - [TROUBLESHOOTING_401.md](./TROUBLESHOOTING_401.md) - 401 error fixes
-- [VERIFY_KEYCLOAK_CONFIG.md](./VERIFY_KEYCLOAK_CONFIG.md) - Keycloak configuration checklist
+- [CHECKLIST.md](./CHECKLIST.md) - Pre-run checklist
