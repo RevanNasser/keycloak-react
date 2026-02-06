@@ -222,6 +222,27 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
           </div>
         </section>
 
+        {/* Test User Info */}
+        <section className="test-user-section">
+          <div className="test-user-card">
+            <div className="test-user-icon">👤</div>
+            <div className="test-user-content">
+              <h3>Ready to Test?</h3>
+              <p>Use these credentials to login and explore:</p>
+              <div className="credentials">
+                <div className="credential-item">
+                  <span className="credential-label">Username:</span>
+                  <code className="credential-value">github</code>
+                </div>
+                <div className="credential-item">
+                  <span className="credential-label">Password:</span>
+                  <code className="credential-value">github</code>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Interactive Steps */}
         <section className="steps-section">
           <h2 className="section-title">
@@ -718,6 +739,90 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
         .step-card p {
           color: rgba(255, 255, 255, 0.5);
           font-size: 13px;
+        }
+
+        /* Test User Section */
+        .test-user-section {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 60px;
+        }
+
+        .test-user-card {
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%);
+          border: 1px solid rgba(59, 130, 246, 0.3);
+          border-radius: 20px;
+          padding: 32px 40px;
+          display: flex;
+          align-items: center;
+          gap: 24px;
+          max-width: 600px;
+          width: 100%;
+          animation: fadeInUp 0.6s ease-out;
+          box-shadow: 0 10px 40px rgba(59, 130, 246, 0.2);
+        }
+
+        .test-user-icon {
+          font-size: 48px;
+          animation: bounce 2s ease infinite;
+        }
+
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+
+        .test-user-content h3 {
+          color: white;
+          font-size: 20px;
+          font-weight: 700;
+          margin: 0 0 8px 0;
+        }
+
+        .test-user-content p {
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 14px;
+          margin: 0 0 16px 0;
+        }
+
+        .credentials {
+          display: flex;
+          gap: 20px;
+        }
+
+        .credential-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .credential-label {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 13px;
+        }
+
+        .credential-value {
+          background: rgba(59, 130, 246, 0.2);
+          border: 1px solid rgba(59, 130, 246, 0.4);
+          color: #60a5fa;
+          padding: 6px 12px;
+          border-radius: 8px;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 14px;
+          font-weight: 600;
+        }
+
+        @media (max-width: 600px) {
+          .test-user-card {
+            flex-direction: column;
+            text-align: center;
+            padding: 24px;
+          }
+
+          .credentials {
+            flex-direction: column;
+            gap: 12px;
+          }
         }
 
         /* Demo Preview */
